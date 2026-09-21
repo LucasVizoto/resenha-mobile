@@ -1,0 +1,68 @@
+{
+  "name": "Resenha UI",
+  "version": "0.1.0",
+  "description": "Soft UI clean — high radius, botões pílula, sombras difusas, gradiente azul/ciano.",
+  "brandGradient": {
+    "light": ["#6B5CFF", "#4AA4FF", "#5BE7F0"],
+    "dark": ["#6B5CFF", "#3D8BFF", "#5BE7F0"]
+  },
+  "colors": {
+    "light": {
+      "background": "#FFFFFF",
+      "backgroundSubtle": "#F7F8FB",
+      "surface": "#FFFFFF",
+      "textPrimary": "#121218",
+      "textSecondary": "#6E6E7C",
+      "textMuted": "#9A9AA8",
+      "textOnBrand": "#FFFFFF",
+      "placeholder": "#9A9AA8",
+      "inputFill": "#F7F8FB",
+      "brandSolid": "#4AA4FF",
+      "brandSoft": "#F4FBFF"
+    },
+    "dark": {
+      "background": "#121218",
+      "backgroundSubtle": "#1C1C24",
+      "surface": "#1C1C24",
+      "textPrimary": "#F7F8FB",
+      "textSecondary": "#C8CAD4",
+      "textMuted": "#9A9AA8",
+      "textOnBrand": "#FFFFFF",
+      "placeholder": "#9A9AA8",
+      "inputFill": "#1C1C24",
+      "brandSolid": "#6EC8FF",
+      "brandSoft": "#1E4FD8"
+    }
+  },
+  "radii": {
+    "sm": 12,
+    "md": 16,
+    "lg": 24,
+    "xl": 32,
+    "pill": 999,
+    "circle": 9999
+  },
+  "spacing": {
+    "xxs": 4,
+    "xs": 8,
+    "sm": 12,
+    "md": 16,
+    "lg": 24,
+    "xl": 32,
+    "2xl": 40,
+    "3xl": 56
+  },
+  "typography": {
+    "font": "System / geometric sans-serif",
+    "display": { "size": 34, "weight": "700" },
+    "title": { "size": 28, "weight": "700" },
+    "heading": { "size": 22, "weight": "600" },
+    "body": { "size": 16, "weight": "400" },
+    "button": { "size": 16, "weight": "600" },
+    "caption": { "size": 12, "weight": "400" }
+  },
+  "shadows": {
+    "soft": { "offsetY": 6, "blur": 16, "opacityLight": 0.08, "opacityDark": 0.35 },
+    "brand": { "offsetY": 8, "blur": 18, "color": "#2F6BFF", "opacityLight": 0.22 }
+  }
+}

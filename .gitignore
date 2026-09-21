@@ -36,6 +36,18 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
+# AI folders
+/.cursor
+/.claude
+AGENTS.md
+CLAUDE.md
+
 # generated native folders
 /ios
 /android
+
+.env
+.env.local
+
+# Database
+supabase/

@@ -1,0 +1,22 @@
+import { Stack } from 'expo-router';
+import { useColorScheme } from 'react-native';
+import { themeFromScheme } from '../../../src/soft-ui/theme';
+
+export default function ResenhasStack() {
+  const theme = themeFromScheme(useColorScheme());
+  return (
+    <Stack
+      screenOptions={{
+        headerShadowVisible: false,
+        headerStyle: { backgroundColor: theme.colors.background },
+        headerTitleStyle: { fontWeight: '700', color: theme.colors.textPrimary },
+        headerTintColor: theme.colors.brand.solid,
+        contentStyle: { backgroundColor: theme.colors.background },
+      }}
+    >
+      <Stack.Screen name="index" options={{ headerShown: false }} />
+      <Stack.Screen name="new" options={{ title: 'Nova resenha' }} />
+      <Stack.Screen name="[resenhaId]" options={{ title: 'Resenha' }} />
+    </Stack>
+  );
+}
