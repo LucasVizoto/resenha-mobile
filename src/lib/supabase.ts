@@ -1,4 +1,5 @@
-﻿import { createClient } from '@supabase/supabase-js';
+﻿import './webcrypto';
+import { createClient } from '@supabase/supabase-js';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
@@ -73,6 +74,7 @@ const authOptions = {
   autoRefreshToken: true,
   persistSession: true,
   detectSessionInUrl: false,
+  flowType: 'pkce',
 } as const;
 
 export const supabase = supabaseConfigured

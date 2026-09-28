@@ -7,4 +7,8 @@
   updated_at: string;
   last_message_body?: string | null;
   last_message_sender_id?: string | null;
+  last_read_at?: string | null;
+  unread_count?: number;
+  kind?: 'dm' | 'group';
+  description?: string | null;
 };

@@ -82,7 +82,7 @@ export default function ResenhasScreen() {
               title="Nenhuma resenha"
               description={
                 error ??
-                'Marque um encontro com a galera: nome, data, ícone e o local no mapa. Só entra quem já é contato de alguém do rolê.'
+                'Marque um novo rolê com a galera!'
               }
             />
           }

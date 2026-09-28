@@ -167,7 +167,12 @@ export function LoginScreen({
                 loading={loading}
               />
 
-              <GoogleButton theme={theme} onPress={onGoogle} disabled={loading} />
+              <GoogleButton
+                theme={theme}
+                label="Login com o Google"
+                onPress={onGoogle}
+                disabled={loading}
+              />
 
               <View style={styles.footerRow}>
                 <Text style={[theme.typography.body, { color: theme.colors.textSecondary }]}>

@@ -98,6 +98,46 @@ export async function uploadProfileAvatar(params: {
   return updateMyAvatarUrl(params.userId, avatarUrl);
 }
 
+export async function uploadGroupAvatar(params: {
+  ownerId: string;
+  groupId: string;
+  uri: string;
+  mimeType?: string | null;
+  base64?: string | null;
+}): Promise<string> {
+  if (!supabaseConfigured) {
+    throw new Error(missingSupabaseEnvMessage);
+  }
+
+  const ext = extensionFromMime(params.mimeType);
+  const contentType = params.mimeType?.startsWith('image/')
+    ? params.mimeType
+    : contentTypeFromExt(ext);
+  const path = `${params.ownerId}/groups/${params.groupId}.${ext}`;
+  const bucket = supabaseStorageBucket;
+  const body = await readLocalImageBytes(params.uri, params.base64);
+
+  const { error: uploadError } = await supabase.storage.from(bucket).upload(path, body, {
+    contentType,
+    upsert: true,
+    cacheControl: '3600',
+  });
+  if (uploadError) {
+    throw new Error(friendlyStorageError(uploadError));
+  }
+
+  const { data: publicData } = supabase.storage.from(bucket).getPublicUrl(path);
+  let avatarUrl = publicData?.publicUrl ? withCacheBust(publicData.publicUrl) : '';
+  if (!avatarUrl) {
+    const signed = await supabase.storage.from(bucket).createSignedUrl(path, 60 * 60 * 24 * 365);
+    if (signed.error || !signed.data?.signedUrl) {
+      throw new Error(friendlyStorageError(signed.error ?? new Error('URL da foto indisponível.')));
+    }
+    avatarUrl = signed.data.signedUrl;
+  }
+  return avatarUrl;
+}
+
 function errorMessage(e: unknown): string {
   if (!e) return 'Erro desconhecido.';
   if (typeof e === 'string') return e;

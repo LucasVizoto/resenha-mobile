@@ -4,6 +4,7 @@ import Constants from 'expo-constants';
 import * as SplashScreen from 'expo-splash-screen';
 import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { AuthProvider } from '../src/lib/auth';
+import { ChatInboxProvider } from '../src/lib/chat-inbox';
 import { initDb } from '../src/lib/db/client';
 import { DialogProvider } from '../src/soft-ui/components/SoftDialog';
 import { InvitesProvider } from '../src/lib/invites-context';
@@ -57,7 +58,9 @@ export default function RootLayout() {
       <AuthProvider>
         <DialogProvider>
           <InvitesProvider>
-            <Slot />
+            <ChatInboxProvider>
+              <Slot />
+            </ChatInboxProvider>
           </InvitesProvider>
         </DialogProvider>
       </AuthProvider>

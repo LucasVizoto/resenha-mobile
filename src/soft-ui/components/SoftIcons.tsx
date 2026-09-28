@@ -234,3 +234,20 @@ export function IconPlus(props: IconProps) {
     </Svg>
   );
 }
+
+export function IconTrash(props: IconProps) {
+  const { color, size } = iconDefaults(props);
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M5 7.5h14" stroke={color} strokeWidth={1.8} strokeLinecap="round" />
+      <Path d="M10 7.5V5.8A1.3 1.3 0 0 1 11.3 4.5h1.4A1.3 1.3 0 0 1 14 5.8V7.5" stroke={color} strokeWidth={1.8} />
+      <Path
+        d="M8 7.5h8l-.7 11.2a1.5 1.5 0 0 1-1.5 1.4H10.2a1.5 1.5 0 0 1-1.5-1.4L8 7.5Z"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinejoin="round"
+      />
+      <Path d="M10.5 11v5.5M13.5 11v5.5" stroke={color} strokeWidth={1.8} strokeLinecap="round" />
+    </Svg>
+  );
+}

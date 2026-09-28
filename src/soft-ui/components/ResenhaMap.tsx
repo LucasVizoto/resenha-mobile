@@ -11,6 +11,7 @@ type Props = {
   /** Recentrar o mapa (busca / GPS). Não usar a cada arraste do pin. */
   cameraKey?: string | number;
   onChange?: (coords: { latitude: number; longitude: number }) => void;
+  onPress?: () => void;
   onTouchStart?: () => void;
   onTouchEnd?: () => void;
   style?: ViewStyle;
@@ -18,6 +19,7 @@ type Props = {
 
 type MapMessage =
   | { type: 'move'; latitude: number; longitude: number }
+  | { type: 'press' }
   | { type: 'touchstart' }
   | { type: 'touchend' };
 
@@ -29,6 +31,7 @@ export function ResenhaMap({
   pinDraggable = false,
   cameraKey,
   onChange,
+  onPress,
   onTouchStart,
   onTouchEnd,
   style,
@@ -38,6 +41,7 @@ export function ResenhaMap({
   const coordsRef = useRef({ latitude, longitude });
   coordsRef.current = { latitude, longitude };
 
+  const canEdit = Boolean(onChange);
   const html = useMemo(
     () =>
       buildLeafletHtml({
@@ -45,8 +49,9 @@ export function ResenhaMap({
         longitude: start.current.longitude,
         interactive,
         pinDraggable,
+        editable: canEdit,
       }),
-    [interactive, pinDraggable],
+    [canEdit, interactive, pinDraggable],
   );
 
   const injectCamera = useCallback((lat: number, lng: number, animate: boolean) => {
@@ -69,6 +74,10 @@ export function ResenhaMap({
       }
       if (data.type === 'touchend') {
         onTouchEnd?.();
+        return;
+      }
+      if (data.type === 'press') {
+        onPress?.();
         return;
       }
       if (data.type === 'move' && onChange) {
@@ -125,11 +134,13 @@ function buildLeafletHtml(opts: {
   longitude: number;
   interactive: boolean;
   pinDraggable: boolean;
+  editable: boolean;
 }): string {
   const lat = Number(opts.latitude.toFixed(6));
   const lng = Number(opts.longitude.toFixed(6));
   const interactive = opts.interactive ? 'true' : 'false';
   const draggable = opts.pinDraggable ? 'true' : 'false';
+  const editable = opts.editable ? 'true' : 'false';
 
   return `<!DOCTYPE html>
 <html>
@@ -173,6 +184,7 @@ function buildLeafletHtml(opts: {
     (function () {
       var interactive = ${interactive};
       var draggable = ${draggable};
+      var editable = ${editable};
       var map = L.map('map', {
         zoomControl: interactive,
         dragging: interactive,
@@ -213,11 +225,14 @@ function buildLeafletHtml(opts: {
         map.setView(ll, Math.max(map.getZoom() || 15, 15), { animate: !!animate });
       };
 
-      if (interactive) {
+      if (editable) {
         map.on('click', function (e) {
           marker.setLatLng(e.latlng);
           sendMove(e.latlng);
         });
+      } else {
+        map.on('click', function () { post({ type: 'press' }); });
+        marker.on('click', function () { post({ type: 'press' }); });
       }
       marker.on('dragend', function () {
         sendMove(marker.getLatLng());

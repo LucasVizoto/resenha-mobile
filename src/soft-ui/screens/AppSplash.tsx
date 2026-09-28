@@ -1,6 +1,5 @@
 import React from 'react';
 import { Image, StyleSheet, Text, useColorScheme, useWindowDimensions, View } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
 import { themeFromScheme } from '../theme';
 
@@ -21,19 +20,10 @@ export function AppSplash({ onReady }: Props) {
   const cardW = Math.min(screenW * 0.72, cardH * (768 / 1369));
 
   return (
-    <LinearGradient
-      colors={[...theme.gradientVertical.colors]}
-      locations={[...theme.gradientVertical.locations]}
-      start={theme.gradientVertical.start}
-      end={theme.gradientVertical.end}
-      style={styles.fill}
-      onLayout={() => onReady?.()}
-    >
-      <StatusBar style="light" />
+    <View style={styles.fill} onLayout={() => onReady?.()}>
+      <StatusBar style="dark" />
       <View
         style={[
-          styles.card,
-          theme.shadows.softStrong,
           {
             width: cardW + 8,
             borderRadius: theme.radii.xl,
@@ -47,8 +37,8 @@ export function AppSplash({ onReady }: Props) {
           accessibilityLabel="Resenha"
         />
       </View>
-      <Text style={[theme.typography.label, styles.subtitle]}>o papo da galera</Text>
-    </LinearGradient>
+      <Text style={[theme.typography.label, styles.subtitle]}></Text>
+    </View>
   );
 }
 
@@ -57,6 +47,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
   },
   card: {
     backgroundColor: '#FFFFFF',

@@ -1,13 +1,13 @@
 ﻿import { Redirect, Tabs } from 'expo-router';
-import { ActivityIndicator, View, useColorScheme } from 'react-native';
+import { ActivityIndicator, StyleSheet, View, useColorScheme } from 'react-native';
 import { useAuth } from '../../src/lib/auth';
+import { useChatInbox } from '../../src/lib/chat-inbox';
 import { useInvites } from '../../src/lib/invites-context';
 import {
   IconAccount,
   IconChat,
   IconPeople,
   IconResenha,
-  SoftGlassBackdrop,
   useGlassChrome,
 } from '../../src/soft-ui';
 import { themeFromScheme } from '../../src/soft-ui/theme';
@@ -16,6 +16,7 @@ export default function AppLayout() {
   const { session, loading } = useAuth();
   const theme = themeFromScheme(useColorScheme());
   const { incoming } = useInvites();
+  const { unreadTotal } = useChatInbox();
   const chrome = useGlassChrome();
 
   if (loading) {
@@ -37,8 +38,6 @@ export default function AppLayout() {
     return <Redirect href="/(auth)/login" />;
   }
 
-  const pillRadius = chrome.tabHeight / 2;
-
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
       <Tabs
@@ -48,38 +47,39 @@ export default function AppLayout() {
           tabBarActiveTintColor: theme.colors.brand.solid,
           tabBarInactiveTintColor: theme.colors.textMuted,
           tabBarLabelStyle: { fontWeight: '600', fontSize: 11 },
-          tabBarHideOnKeyboard: false,
-          tabBarBackground: () => <SoftGlassBackdrop theme={theme} intensity={90} />,
+          tabBarHideOnKeyboard: true,
           tabBarStyle: {
-            position: 'absolute',
-            left: chrome.tabHInset,
-            right: chrome.tabHInset,
-            bottom: chrome.tabBottom,
+            position: 'relative',
+            left: 0,
+            right: 0,
+            bottom: 0,
             height: chrome.tabHeight,
-            borderRadius: pillRadius,
-            backgroundColor: 'transparent',
-            borderTopWidth: 0,
-            elevation: 18,
+            paddingTop: 6,
+            paddingBottom: chrome.systemBottom,
+            marginHorizontal: 0,
+            borderRadius: 0,
+            backgroundColor: theme.colors.surface,
+            borderTopWidth: StyleSheet.hairlineWidth,
+            borderTopColor: theme.colors.borderSubtle,
+            elevation: 8,
             shadowColor: '#000000',
-            shadowOffset: { width: 0, height: 10 },
-            shadowOpacity: theme.mode === 'dark' ? 0.5 : 0.18,
-            shadowRadius: 22,
-            overflow: 'hidden',
-            paddingTop: 8,
-            paddingBottom: 8,
+            shadowOffset: { width: 0, height: -2 },
+            shadowOpacity: theme.mode === 'dark' ? 0.35 : 0.08,
+            shadowRadius: 8,
+            overflow: 'visible',
           },
         }}
       >
         <Tabs.Screen
-          name="contacts"
+          name="chat"
           options={{
-            title: 'Contatos',
-            tabBarBadge: incoming.length > 0 ? incoming.length : undefined,
+            title: 'Chats',
+            tabBarBadge: unreadTotal > 0 ? unreadTotal : undefined,
             tabBarBadgeStyle: {
               backgroundColor: theme.colors.brand.solid,
               color: theme.colors.textOnBrand,
             },
-            tabBarIcon: ({ color, size }) => <IconPeople color={String(color)} size={size} />,
+            tabBarIcon: ({ color, size }) => <IconChat color={String(color)} size={size} />,
           }}
         />
         <Tabs.Screen
@@ -90,10 +90,15 @@ export default function AppLayout() {
           }}
         />
         <Tabs.Screen
-          name="chat"
+          name="contacts"
           options={{
-            title: 'Chat',
-            tabBarIcon: ({ color, size }) => <IconChat color={String(color)} size={size} />,
+            title: 'Contatos',
+            tabBarBadge: incoming.length > 0 ? incoming.length : undefined,
+            tabBarBadgeStyle: {
+              backgroundColor: theme.colors.brand.solid,
+              color: theme.colors.textOnBrand,
+            },
+            tabBarIcon: ({ color, size }) => <IconPeople color={String(color)} size={size} />,
           }}
         />
         <Tabs.Screen

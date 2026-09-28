@@ -18,6 +18,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useAuth } from '../../../src/lib/auth';
 import { upsertConversation } from '../../../src/lib/db/conversations';
+import { cacheProfile } from '../../../src/lib/db/profiles';
 import { listMyContacts } from '../../../src/lib/contacts';
 import {
   displayNameFor,
@@ -93,6 +94,7 @@ export default function ContactsScreen() {
     if (!user) return;
     const id = [user.id, p.id].sort().join('_');
     const now = new Date().toISOString();
+    await cacheProfile(p);
     await upsertConversation({
       id,
       title: p.display_name ?? p.username ?? 'Conversa',
@@ -101,7 +103,7 @@ export default function ContactsScreen() {
       peer_avatar_url: p.avatar_url,
       updated_at: now,
     });
-    router.push(`/(app)/chat/${id}`);
+    router.push(`/(app)/chat/${id}`, { withAnchor: true });
   };
 
   const runSearch = async () => {

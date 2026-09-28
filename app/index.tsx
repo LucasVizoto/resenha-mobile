@@ -14,7 +14,7 @@ export default function Index() {
   }
 
   if (session) {
-    return <Redirect href="/(app)/contacts" />;
+    return <Redirect href="/(app)/chat" />;
   }
   return <Redirect href="/(auth)/login" />;
 }

@@ -12,11 +12,17 @@ import {
   useColorScheme,
   View,
 } from 'react-native';
-import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
-import { useAuth } from '../../../src/lib/auth';
+import { isGoogleAuthCancelled, useAuth } from '../../../src/lib/auth';
 import { listMyContacts } from '../../../src/lib/contacts';
+import {
+  createResenhaCalendarEvent,
+  friendlyCalendarError,
+  guestEmailsFromProfiles,
+  isGoogleCalendarAuthError,
+} from '../../../src/lib/google-calendar';
 import { displayNameFor } from '../../../src/lib/invites';
 import { isAbortError, searchPlaces, type PlaceSuggestion } from '../../../src/lib/places';
 import { addCustomIcon, listCustomIcons } from '../../../src/lib/resenha-icons';
@@ -55,7 +61,7 @@ function formatPlace(geo: Location.LocationGeocodedAddress | undefined): string 
 export default function NewResenhaScreen() {
   const theme = themeFromScheme(useColorScheme());
   const chrome = useGlassChrome();
-  const { user } = useAuth();
+  const { user, ensureGoogleCalendarAccess } = useAuth();
   const router = useRouter();
   const { show } = useDialog();
   const userPickedPlace = useRef(false);
@@ -87,6 +93,17 @@ export default function NewResenhaScreen() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loadingContacts, setLoadingContacts] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [calendarPrompt, setCalendarPrompt] = useState<{
+    id: string;
+    name: string;
+    occursAt: Date;
+    latitude: number;
+    longitude: number;
+    placeLabel: string | null;
+    guestIds: string[];
+  } | null>(null);
+  const [calendarBusy, setCalendarBusy] = useState(false);
+  const [calendarError, setCalendarError] = useState<string | null>(null);
 
   const allIcons = useMemo(() => [...customIcons, ...RESENHA_ICONS], [customIcons]);
 
@@ -156,10 +173,9 @@ export default function NewResenhaScreen() {
     };
   }, [applyCoords]);
 
-  const onPickerChange = useCallback(
-    (event: DateTimePickerEvent, date?: Date) => {
+  const onPickerValue = useCallback(
+    (_event: unknown, date: Date) => {
       if (Platform.OS === 'android') setPicker(null);
-      if (event.type === 'dismissed' || !date) return;
       setOccursAt((prev) => (picker === 'time' ? mergeTimePart(prev, date) : mergeDatePart(prev, date)));
     },
     [picker],
@@ -336,10 +352,69 @@ export default function NewResenhaScreen() {
     [occursAt],
   );
 
+  const goToResenha = (id: string) => {
+    setCalendarPrompt(null);
+    router.replace(`/(app)/resenhas/${id}`);
+  };
+
+  const attachGoogleCalendar = async (pending: NonNullable<typeof calendarPrompt>) => {
+    setCalendarBusy(true);
+    try {
+      const { emails, skipped } = guestEmailsFromProfiles(
+        contacts,
+        pending.guestIds,
+        user?.email,
+      );
+      const payload = {
+        name: pending.name,
+        occursAt: pending.occursAt,
+        latitude: pending.latitude,
+        longitude: pending.longitude,
+        placeLabel: pending.placeLabel,
+        guestEmails: emails,
+        organizerEmail: user?.email,
+      };
+      let token = await ensureGoogleCalendarAccess();
+      try {
+        await createResenhaCalendarEvent(token, payload);
+      } catch (e) {
+        const status = (e as { status?: number }).status ?? 0;
+        if (!isGoogleCalendarAuthError(status)) throw e;
+        token = await ensureGoogleCalendarAccess({ force: true });
+        await createResenhaCalendarEvent(token, payload);
+      }
+      if (skipped > 0 && emails.length === 0) {
+        show({
+          title: 'Agenda criada',
+          message:
+            'O evento entrou na sua agenda. Os convidados não têm e-mail no perfil, então o Google não pôde enviá-los o convite.',
+        });
+      } else if (skipped > 0) {
+        show({
+          title: 'Agenda criada',
+          message: `${emails.length} convite(s) enviados. ${skipped} pessoa(s) sem e-mail no perfil ficaram de fora.`,
+        });
+      }
+      goToResenha(pending.id);
+    } catch (e) {
+      if (isGoogleAuthCancelled(e)) {
+        const detail = e instanceof Error ? e.message.replace(/^Login Google cancelado\.\s*/i, '') : '';
+        setCalendarError(
+          `A autorização do Google não voltou para o app. Feche a aba do Google e tente de novo. ${detail}`.trim(),
+        );
+      } else {
+        setCalendarError(friendlyCalendarError(e));
+      }
+    } finally {
+      setCalendarBusy(false);
+    }
+  };
+
   const onSave = async () => {
     if (!user) return;
     try {
       setSaving(true);
+      const guestIds = [...selected];
       const id = await createResenha({
         name,
         occursAt,
@@ -348,9 +423,18 @@ export default function NewResenhaScreen() {
         iconLabel: icon.label,
         latitude: coords.latitude,
         longitude: coords.longitude,
-        guestIds: [...selected],
+        guestIds,
       });
-      router.replace(`/(app)/resenhas/${id}`);
+      setCalendarError(null);
+      setCalendarPrompt({
+        id,
+        name: name.trim(),
+        occursAt,
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+        placeLabel,
+        guestIds,
+      });
     } catch (e) {
       show({ title: 'Não foi possível marcar', message: friendlyResenhaError(e) });
     } finally {
@@ -396,7 +480,8 @@ export default function NewResenhaScreen() {
             value={occursAt}
             mode={picker}
             display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-            onChange={onPickerChange}
+            onValueChange={onPickerValue}
+            onDismiss={() => setPicker(null)}
             minimumDate={picker === 'date' ? new Date() : undefined}
             themeVariant={theme.mode === 'dark' ? 'dark' : 'light'}
           />
@@ -668,6 +753,76 @@ export default function NewResenhaScreen() {
             <View style={{ marginTop: 18, gap: 10 }}>
               <SoftButton theme={theme} label="Salvar ícone" onPress={() => void onSaveCustomIcon()} loading={savingIcon} />
               <SoftButton theme={theme} variant="ghost" label="Cancelar" onPress={() => setIconModal(false)} />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={Boolean(calendarPrompt)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!calendarBusy && calendarPrompt) goToResenha(calendarPrompt.id);
+        }}
+      >
+        <View style={[styles.modalOverlay, { backgroundColor: theme.colors.overlay }]}>
+          <View
+            style={[
+              styles.modalCard,
+              {
+                backgroundColor: theme.colors.surface,
+                borderRadius: theme.radii.xl,
+                ...theme.shadows.softStrong,
+              },
+            ]}
+          >
+            <Text style={[theme.typography.heading, { color: theme.colors.textPrimary, textAlign: 'center' }]}>
+              Google Agenda
+            </Text>
+            <Text
+              style={[
+                theme.typography.body,
+                {
+                  color: theme.colors.textSecondary,
+                  textAlign: 'center',
+                  marginTop: theme.spacing.sm,
+                },
+              ]}
+            >
+              {calendarError
+                ? 'A resenha já está marcada. O Google Agenda não foi concluído — você pode tentar de novo.'
+                : 'Quer também criar um lembrete no Google Agenda de cada participante? Você entra como organizador e os demais como convidados (2 horas de duração).'}
+            </Text>
+            {calendarError ? (
+              <Text
+                style={[
+                  theme.typography.caption,
+                  { color: theme.colors.danger, textAlign: 'center', marginTop: 10 },
+                ]}
+              >
+                {calendarError}
+              </Text>
+            ) : null}
+            <View style={{ marginTop: 18, gap: 10 }}>
+              <SoftButton
+                theme={theme}
+                label={calendarError ? 'Tentar de novo' : 'Sim, criar no Agenda'}
+                onPress={() => {
+                  if (calendarPrompt) void attachGoogleCalendar(calendarPrompt);
+                }}
+                loading={calendarBusy}
+                disabled={calendarBusy}
+              />
+              <SoftButton
+                theme={theme}
+                variant="ghost"
+                label={calendarError ? 'Continuar sem Agenda' : 'Agora não'}
+                onPress={() => {
+                  if (calendarPrompt) goToResenha(calendarPrompt.id);
+                }}
+                disabled={calendarBusy}
+              />
             </View>
           </View>
         </View>

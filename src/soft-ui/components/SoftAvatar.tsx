@@ -12,6 +12,8 @@ type Props = {
   onPress?: () => void;
   uploading?: boolean;
   editable?: boolean;
+  /** Cor fixa do placeholder; se omitida, deriva do nome. */
+  accentColor?: string | null;
 };
 
 function initials(name?: string | null) {
@@ -39,6 +41,7 @@ export function SoftAvatar({
   onPress,
   uploading = false,
   editable = false,
+  accentColor,
 }: Props) {
   const inner = (
     <View style={{ width: size, height: size }}>
@@ -49,7 +52,7 @@ export function SoftAvatar({
             width: size,
             height: size,
             borderRadius: size / 2,
-            backgroundColor: uri ? theme.colors.brand.muted : accentFor(name),
+            backgroundColor: uri ? theme.colors.brand.muted : (accentColor ?? accentFor(name)),
             opacity: uploading ? 0.7 : 1,
           },
         ]}

@@ -19,7 +19,7 @@ export default function LoginRoute() {
         setLoading(true);
         try {
           await signIn(email, password);
-          router.replace('/(app)/contacts');
+          router.replace('/(app)/chat');
         } catch (e) {
           show({
             title: 'Não foi possível entrar',
@@ -48,7 +48,7 @@ export default function LoginRoute() {
         setLoading(true);
         try {
           await signInWithGoogle();
-          router.replace('/(app)/contacts');
+          router.replace('/(app)/chat');
         } catch (e) {
           show({
             title: 'Google',

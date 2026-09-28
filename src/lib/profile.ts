@@ -34,13 +34,21 @@ export function profileFromAuthUser(user: {
   user_metadata?: Record<string, unknown> | null;
 }): Profile {
   const meta = user.user_metadata ?? {};
+  const given =
+    (typeof meta.first_name === 'string' && meta.first_name) ||
+    (typeof meta.given_name === 'string' && meta.given_name) ||
+    null;
+  const family =
+    (typeof meta.last_name === 'string' && meta.last_name) ||
+    (typeof meta.family_name === 'string' && meta.family_name) ||
+    null;
   const fullName =
     (typeof meta.full_name === 'string' && meta.full_name) ||
     (typeof meta.name === 'string' && meta.name) ||
+    [given, family].filter(Boolean).join(' ') ||
     null;
-  const given = typeof meta.given_name === 'string' ? meta.given_name : null;
-  const family = typeof meta.family_name === 'string' ? meta.family_name : null;
   const username =
+    (typeof meta.username === 'string' && meta.username) ||
     (typeof meta.preferred_username === 'string' && meta.preferred_username) ||
     (typeof meta.user_name === 'string' && meta.user_name) ||
     user.email?.split('@')[0] ||
@@ -57,6 +65,8 @@ export function profileFromAuthUser(user: {
     first_name: given,
     last_name: family,
     email: user.email ?? null,
+    instagram: typeof meta.instagram === 'string' ? meta.instagram : null,
+    phone: typeof meta.phone === 'string' ? meta.phone : null,
   };
 }
 
@@ -120,6 +130,30 @@ export function normalizePhone(raw: string): string {
   const plus = trimmed.startsWith('+');
   const digits = trimmed.replace(/\D/g, '');
   return plus ? `+${digits}` : digits;
+}
+
+export function deriveUsernameFromEmail(email: string): string {
+  const local = (email.split('@')[0] ?? '').replace(/[^a-zA-Z0-9._]/g, '').slice(0, 24);
+  if (USERNAME_RE.test(local)) return local;
+  const padded = `user${local}`.replace(/[^a-zA-Z0-9._]/g, '').slice(0, 24);
+  if (USERNAME_RE.test(padded)) return padded;
+  return `user${Date.now().toString(36).slice(-8)}`;
+}
+
+export function validateSignupProfile(input: ProfileFormValues): ProfileValidation {
+  const email = input.email.trim();
+  if (!email || !EMAIL_RE.test(email)) {
+    return { ok: false, error: 'Informe um e-mail válido.' };
+  }
+  const usernameRaw = input.username.trim().replace(/^@+/, '');
+  if (usernameRaw && !USERNAME_RE.test(usernameRaw)) {
+    return { ok: false, error: 'Usuário: 3–24 caracteres (letras, números, . ou _).' };
+  }
+  return validateProfileForm({
+    ...input,
+    email,
+    username: usernameRaw || deriveUsernameFromEmail(email),
+  });
 }
 
 export function validateProfileForm(input: ProfileFormValues): ProfileValidation {

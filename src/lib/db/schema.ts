@@ -5,7 +5,10 @@ CREATE TABLE IF NOT EXISTS conversations (
   peer_user_id TEXT,
   peer_display_name TEXT,
   peer_avatar_url TEXT,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  last_read_at TEXT,
+  kind TEXT NOT NULL DEFAULT 'dm',
+  description TEXT
 );
 
 CREATE TABLE IF NOT EXISTS messages (
@@ -43,6 +46,12 @@ CREATE TABLE IF NOT EXISTS meta (
 CREATE TABLE IF NOT EXISTS saved_contacts (
   contact_user_id TEXT PRIMARY KEY,
   added_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS deleted_messages (
+  id TEXT PRIMARY KEY,
+  conversation_id TEXT,
+  deleted_at TEXT NOT NULL
 );
 `;
 

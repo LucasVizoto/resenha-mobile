@@ -1,5 +1,8 @@
 import { missingSupabaseEnvMessage, supabase, supabaseConfigured } from './supabase';
 import { mapProfileRow } from './profile';
+import { ensureConversationWithPeer } from './db/conversations';
+import { insertMessage, newMessageId } from './db/messages';
+import { deliverOutgoingMessage } from './message-sync';
 import type { Profile } from '../types/profile';
 import type { Resenha, ResenhaMember, ResenhaMemberRole } from '../types/resenha';
 
@@ -61,8 +64,22 @@ async function loadMembers(resenhaIds: string[]): Promise<Map<string, ResenhaMem
   return byResenha;
 }
 
+export function resenhaHasPassed(occursAt: string, now = Date.now()): boolean {
+  const time = new Date(occursAt).getTime();
+  return !Number.isFinite(time) || time <= now;
+}
+
+export async function purgeExpiredResenhas(): Promise<void> {
+  if (!supabaseConfigured) return;
+  const { error } = await supabase.rpc('purge_expired_resenhas');
+  if (error && !/schema cache|does not exist|could not find the function/i.test(error.message)) {
+    console.warn('[Resenha] Falha ao remover resenhas vencidas', error.message);
+  }
+}
+
 export async function listMyResenhas(userId: string): Promise<Resenha[]> {
   if (!supabaseConfigured) return [];
+  await purgeExpiredResenhas();
   const { data: memberships, error: memberError } = await supabase
     .from('resenha_members')
     .select('resenha_id')
@@ -75,16 +92,53 @@ export async function listMyResenhas(userId: string): Promise<Resenha[]> {
     ascending: true,
   });
   if (error) throw error;
-  return (data ?? []).map((row) => asResenha(row as Record<string, unknown>));
+  return (data ?? [])
+    .map((row) => asResenha(row as Record<string, unknown>))
+    .filter((row) => !resenhaHasPassed(row.occurs_at));
 }
 
 export async function getResenha(resenhaId: string): Promise<Resenha | null> {
   if (!supabaseConfigured) return null;
+  await purgeExpiredResenhas();
   const { data, error } = await supabase.from('resenhas').select('*').eq('id', resenhaId).maybeSingle();
   if (error) throw error;
   if (!data) return null;
+  const resenha = asResenha(data as Record<string, unknown>);
+  if (resenhaHasPassed(resenha.occurs_at)) return null;
   const members = await loadMembers([resenhaId]);
-  return asResenha(data as Record<string, unknown>, members.get(resenhaId) ?? []);
+  return { ...resenha, members: members.get(resenhaId) ?? [] };
+}
+
+export async function cancelResenha(resenhaId: string): Promise<void> {
+  if (!supabaseConfigured) {
+    throw new Error(missingSupabaseEnvMessage);
+  }
+  const { error } = await supabase.from('resenhas').delete().eq('id', resenhaId);
+  if (error) throw error;
+}
+
+export async function notifyResenhaGuests(myId: string, guestIds: string[], body: string): Promise<void> {
+  const text = body.trim();
+  if (text.length < 1) {
+    throw new Error('Escreva a mensagem para os participantes.');
+  }
+  const createdAt = new Date().toISOString();
+  for (const guestId of guestIds) {
+    if (!guestId || guestId === myId) continue;
+    const conversationId = [myId, guestId].sort().join('_');
+    await ensureConversationWithPeer(conversationId, guestId, createdAt);
+    const msg = {
+      id: newMessageId(),
+      conversation_id: conversationId,
+      sender_id: myId,
+      body: text,
+      created_at: createdAt,
+      status: 'sent' as const,
+      synced: false,
+    };
+    await insertMessage(msg);
+    await deliverOutgoingMessage(msg, myId);
+  }
 }
 
 export async function createResenha(input: {

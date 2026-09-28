@@ -15,8 +15,10 @@ export default function ChatStack() {
       }}
     >
       <Stack.Screen name="index" options={{ headerShown: false }} />
+      <Stack.Screen name="new-group" options={{ headerShown: false }} />
       <Stack.Screen name="[conversationId]" options={{ headerShown: false }} />
       <Stack.Screen name="profile/[userId]" options={{ title: 'Perfil' }} />
+      <Stack.Screen name="group/[groupId]" options={{ headerShown: false }} />
     </Stack>
   );
 }

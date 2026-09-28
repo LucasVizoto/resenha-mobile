@@ -17,7 +17,12 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "softwareKeyboardLayoutMode": "resize"
+      "softwareKeyboardLayoutMode": "resize",
+      "permissions": [
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -30,12 +35,12 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#2F6BFF",
+          "backgroundColor": "#FFFFFF",
           "image": "./assets/splash-icon.png",
           "imageWidth": 240,
           "resizeMode": "contain",
           "dark": {
-            "backgroundColor": "#121218",
+            "backgroundColor": "#FFFFFF",
             "image": "./assets/splash-icon.png"
           }
         }
@@ -53,7 +58,20 @@
         {
           "locationWhenInUsePermission": "O Resenha usa sua localização para marcar o ponto do encontro no mapa."
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#2F6BFF",
+          "defaultChannel": "messages"
+        }
       ]
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "03a571b1-34ec-4d52-94da-442cddf4ddfc"
+      }
+    }
   }
 }
