@@ -10,8 +10,8 @@ type Props = {
 };
 
 /**
- * Splash JS: gradiente Soft UI + arte completa com cantos arredondados.
- * Cobre o carregamento inicial (DB) e o gap do Expo Go, que não replica a splash nativa.
+ * Splash JS enquanto o SQLite abre. A splash nativa só some no _layout,
+ * depois desta tela já ter pintado — esconder cedo no Android fecha o app.
  */
 export function AppSplash({ onReady }: Props) {
   const theme = themeFromScheme(useColorScheme());

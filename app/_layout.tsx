@@ -1,6 +1,5 @@
 ﻿import { useEffect, useState } from 'react';
 import { Slot } from 'expo-router';
-import Constants from 'expo-constants';
 import * as SplashScreen from 'expo-splash-screen';
 import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { AuthProvider } from '../src/lib/auth';
@@ -10,12 +9,9 @@ import { DialogProvider } from '../src/soft-ui/components/SoftDialog';
 import { InvitesProvider } from '../src/lib/invites-context';
 import { AppSplash } from '../src/soft-ui/screens/AppSplash';
 
-const isExpoGo = Constants.appOwnership === 'expo';
+export { ErrorBoundary } from 'expo-router';
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
-if (!isExpoGo) {
-  SplashScreen.setOptions({ duration: 500, fade: true });
-}
 
 export default function RootLayout() {
   const [dbReady, setDbReady] = useState(false);
@@ -40,17 +36,14 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (!dbReady) return;
-    SplashScreen.hideAsync().catch(() => undefined);
+    const id = requestAnimationFrame(() => {
+      SplashScreen.hideAsync().catch(() => undefined);
+    });
+    return () => cancelAnimationFrame(id);
   }, [dbReady]);
 
   if (!dbReady) {
-    return (
-      <AppSplash
-        onReady={() => {
-          SplashScreen.hideAsync().catch(() => undefined);
-        }}
-      />
-    );
+    return <AppSplash />;
   }
 
   return (

@@ -123,8 +123,6 @@ function ensureHandler() {
   });
 }
 
-ensureHandler();
-
 function chatUrl(conversationId: string) {
   return `/(app)/chat/${conversationId}`;
 }
