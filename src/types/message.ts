@@ -5,6 +5,7 @@ export type Message = {
   conversation_id: string;
   sender_id: string;
   body: string;
+  image_url?: string | null;
   created_at: string;
   status: MessageStatus;
   synced: boolean;

@@ -8,10 +8,11 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
+import { useAuth } from '../../lib/auth';
 import { fetchContactProfile, friendlyProfileError } from '../../lib/profile';
 import { displayNameFor } from '../../lib/invites';
 import type { Profile } from '../../types/profile';
-import { SoftAvatar, SoftEmptyState } from '../components';
+import { ChatMediaGrid, SoftAvatar, SoftEmptyState } from '../components';
 import { themeFromScheme } from '../theme';
 import { useGlassChrome } from '../chrome';
 
@@ -43,6 +44,7 @@ function Field({
 export function ContactProfileScreen({ userId }: { userId: string }) {
   const theme = themeFromScheme(useColorScheme());
   const chrome = useGlassChrome();
+  const { user } = useAuth();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -105,6 +107,9 @@ export function ContactProfileScreen({ userId }: { userId: string }) {
           {name}
         </Text>
       </View>
+      {user && user.id !== userId ? (
+        <ChatMediaGrid conversationId={[user.id, userId].sort().join('_')} theme={theme} />
+      ) : null}
       <Field theme={theme} label="Nome" value={profile.display_name} />
       <Field
         theme={theme}

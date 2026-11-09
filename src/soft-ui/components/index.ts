@@ -10,4 +10,6 @@ export { DialogProvider, useDialog } from './SoftDialog';
 export type { SoftDialogAction, SoftDialogConfig } from './SoftDialog';
 export * from './SoftIcons';
 export { ResenhaMap, FALLBACK_COORDS, isNativeMapSupported } from './ResenhaMap';
+export { ChatImageViewer, ChatMediaGrid } from './ChatMediaGrid';
+export { FaceFilterStudio } from './FaceFilterStudio';
 export { SoftGlass, SoftGlassBackdrop } from './SoftGlass';

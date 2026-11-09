@@ -26,7 +26,8 @@
       "package": "com.lucasvizoto.resenha"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "output": "static"
     },
     "plugins": [
       "expo-router",
@@ -67,7 +68,9 @@
           "color": "#2F6BFF",
           "defaultChannel": "messages"
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker",
+      "expo-status-bar"
     ],
     "extra": {
       "router": {},

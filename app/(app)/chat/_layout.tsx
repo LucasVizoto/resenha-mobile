@@ -19,6 +19,7 @@ export default function ChatStack() {
       <Stack.Screen name="[conversationId]" options={{ headerShown: false }} />
       <Stack.Screen name="profile/[userId]" options={{ title: 'Perfil' }} />
       <Stack.Screen name="group/[groupId]" options={{ headerShown: false }} />
+      <Stack.Screen name="group-resenhas/[groupId]" options={{ headerShown: false }} />
     </Stack>
   );
 }

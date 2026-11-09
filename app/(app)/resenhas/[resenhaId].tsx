@@ -14,6 +14,14 @@ import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from '
 import * as Location from 'expo-location';
 import { useAuth } from '../../../src/lib/auth';
 import { useChatInbox } from '../../../src/lib/chat-inbox';
+import {
+  createResenhaChatGroup,
+  findResenhaOriginGroup,
+  friendlyGroupResenhaError,
+  linkGroupResenha,
+  listGroupsCoveringResenha,
+} from '../../../src/lib/group-resenhas';
+import { persistGroupLocally } from '../../../src/lib/groups';
 import { openGoogleMaps } from '../../../src/lib/maps';
 import {
   cancelResenha,
@@ -22,6 +30,7 @@ import {
   notifyResenhaGuests,
 } from '../../../src/lib/resenhas';
 import { displayNameFor } from '../../../src/lib/invites';
+import type { ChatGroup } from '../../../src/types/group';
 import {
   formatResenhaDateTime,
   resenhaIconEmoji,
@@ -31,6 +40,7 @@ import {
   ResenhaMap,
   SoftButton,
   SoftEmptyState,
+  SoftInput,
   SoftListRow,
   useDialog,
   useGlassChrome,
@@ -42,7 +52,7 @@ export default function ResenhaDetailScreen() {
   const chrome = useGlassChrome();
   const { show } = useDialog();
   const { user } = useAuth();
-  const { bump } = useChatInbox();
+  const { bump, refresh } = useChatInbox();
   const router = useRouter();
   const navigation = useNavigation();
   const { resenhaId } = useLocalSearchParams<{ resenhaId: string }>();
@@ -54,6 +64,11 @@ export default function ResenhaDetailScreen() {
   const [cancelStep, setCancelStep] = useState<'ask' | 'write'>('ask');
   const [notice, setNotice] = useState('');
   const [cancelling, setCancelling] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatName, setChatName] = useState('');
+  const [matchingGroups, setMatchingGroups] = useState<ChatGroup[]>([]);
+  const [loadingGroups, setLoadingGroups] = useState(false);
+  const [chatBusy, setChatBusy] = useState(false);
 
   const load = useCallback(async () => {
     if (!resenhaId) return;
@@ -93,6 +108,80 @@ export default function ResenhaDetailScreen() {
   );
 
   const isHost = Boolean(user && item && item.host_id === user.id);
+
+  const openChat = async () => {
+    if (!item || chatBusy) return;
+    setChatBusy(true);
+    try {
+      const origin = await findResenhaOriginGroup(item.id);
+      if (origin) {
+        await persistGroupLocally(origin);
+        await refresh();
+        bump();
+        router.push(`/(app)/chat/${origin.id}`);
+        return;
+      }
+    } catch (e) {
+      const raw = e instanceof Error ? e.message : String(e);
+      const missing = /schema cache|does not exist|could not find the function|resenha_origin_chat_group/i.test(raw);
+      if (!missing) {
+        show({ title: 'Chat', message: friendlyGroupResenhaError(e) });
+        return;
+      }
+    } finally {
+      setChatBusy(false);
+    }
+    setChatName(item.name.slice(0, 80));
+    setMatchingGroups([]);
+    setChatOpen(true);
+    setLoadingGroups(true);
+    try {
+      setMatchingGroups(await listGroupsCoveringResenha(item.id));
+    } catch (e) {
+      show({ title: 'Chat', message: friendlyGroupResenhaError(e) });
+    } finally {
+      setLoadingGroups(false);
+    }
+  };
+
+  const openGroupChat = async (group: ChatGroup) => {
+    if (!item || chatBusy) return;
+    setChatBusy(true);
+    try {
+      await linkGroupResenha(group.id, item.id);
+      await persistGroupLocally(group);
+      await refresh();
+      bump();
+      setChatOpen(false);
+      router.push(`/(app)/chat/${group.id}`);
+    } catch (e) {
+      show({ title: 'Não foi possível abrir o grupo', message: friendlyGroupResenhaError(e) });
+    } finally {
+      setChatBusy(false);
+    }
+  };
+
+  const createGroupChat = async () => {
+    if (!item || chatBusy) return;
+    const name = chatName.trim();
+    if (name.length < 2) return;
+    setChatBusy(true);
+    try {
+      const group = await createResenhaChatGroup({
+        resenhaId: item.id,
+        name,
+        description: `Chat da resenha ${item.name}`.slice(0, 500),
+      });
+      await refresh();
+      bump();
+      setChatOpen(false);
+      router.push(`/(app)/chat/${group.id}`);
+    } catch (e) {
+      show({ title: 'Não foi possível criar o grupo', message: friendlyGroupResenhaError(e) });
+    } finally {
+      setChatBusy(false);
+    }
+  };
 
   const openCancel = () => {
     if (!item) return;
@@ -168,6 +257,10 @@ export default function ResenhaDetailScreen() {
         </Text>
       </View>
 
+      <View style={{ marginTop: 16 }}>
+        <SoftButton theme={theme} label="Chat" onPress={() => void openChat()} loading={chatBusy && !chatOpen} />
+      </View>
+
       <Text style={[theme.typography.label, styles.section, { color: theme.colors.textSecondary }]}>
         Local
       </Text>
@@ -228,9 +321,109 @@ export default function ResenhaDetailScreen() {
         </View>
       ) : null}
 
-      <Modal visible={cancelOpen} transparent animationType="fade" onRequestClose={() => !cancelling && setCancelOpen(false)}>
+      <Modal
+        visible={chatOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!chatBusy) setChatOpen(false);
+        }}
+      >
         <View style={[styles.overlay, { backgroundColor: theme.colors.overlay }]}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => !cancelling && setCancelOpen(false)} />
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => {
+              if (!chatBusy) setChatOpen(false);
+            }}
+          />
+          <View
+            style={[
+              styles.card,
+              {
+                backgroundColor: theme.colors.surface,
+                borderRadius: theme.radii.xl,
+                ...theme.shadows.softStrong,
+              },
+            ]}
+          >
+            <Text style={[theme.typography.heading, { color: theme.colors.textPrimary, textAlign: 'center' }]}>
+              Chat da resenha
+            </Text>
+            <Text
+              style={[
+                theme.typography.body,
+                { color: theme.colors.textSecondary, textAlign: 'center', marginTop: 8, marginBottom: 14 },
+              ]}
+            >
+              Criar um grupo com todos os participantes desta resenha?
+            </Text>
+            <SoftInput
+              theme={theme}
+              placeholder="Nome do grupo"
+              value={chatName}
+              onChangeText={setChatName}
+              maxLength={80}
+              editable={!chatBusy}
+            />
+            <View style={{ marginTop: 14 }}>
+              <SoftButton
+                theme={theme}
+                label="Criar grupo"
+                onPress={() => void createGroupChat()}
+                loading={chatBusy}
+                disabled={chatBusy || chatName.trim().length < 2}
+              />
+            </View>
+            {loadingGroups ? (
+              <ActivityIndicator color={theme.colors.brand.solid} style={{ marginTop: 18 }} />
+            ) : matchingGroups.length > 0 ? (
+              <View style={{ marginTop: 18, gap: 10 }}>
+                <Text style={[theme.typography.caption, { color: theme.colors.textSecondary }]}>
+                  Ou reaproveitar um grupo que já tem todos estes participantes
+                </Text>
+                <ScrollView style={{ maxHeight: 220 }} contentContainerStyle={{ gap: 10 }}>
+                  {matchingGroups.map((group) => (
+                    <SoftListRow
+                      key={group.id}
+                      theme={theme}
+                      title={group.name}
+                      subtitle={group.description?.trim() || 'Grupo existente'}
+                      avatarUri={group.avatar_url}
+                      disabled={chatBusy}
+                      onPress={() => void openGroupChat(group)}
+                    />
+                  ))}
+                </ScrollView>
+              </View>
+            ) : null}
+            <View style={{ marginTop: 10 }}>
+              <SoftButton
+                theme={theme}
+                variant="ghost"
+                label="Cancelar"
+                onPress={() => setChatOpen(false)}
+                disabled={chatBusy}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={cancelOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!cancelling) setCancelOpen(false);
+        }}
+      >
+        <View style={[styles.overlay, { backgroundColor: theme.colors.overlay }]}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => {
+              if (!cancelling) setCancelOpen(false);
+            }}
+          />
           <View
             style={[
               styles.card,

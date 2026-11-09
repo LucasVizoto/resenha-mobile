@@ -215,7 +215,7 @@ export default function ContactsScreen() {
             },
           ]}
           ListHeaderComponent={
-            incoming.length === 0 ? null : (
+            incoming.length === 0 ? undefined : (
               <View style={{ gap: theme.spacing.md, marginBottom: theme.spacing.sm }}>
                 <Text style={[theme.typography.label, { color: theme.colors.textSecondary }]}>
                   Convites recebidos
@@ -263,7 +263,7 @@ export default function ContactsScreen() {
             )
           }
           ListEmptyComponent={
-            incoming.length > 0 ? null : (
+            incoming.length > 0 ? undefined : (
               <SoftEmptyState
                 theme={theme}
                 title="Nenhum contato"
@@ -407,7 +407,7 @@ export default function ContactsScreen() {
               ListEmptyComponent={
                 searching ? (
                   <ActivityIndicator color={theme.colors.brand.solid} style={{ marginTop: 16 }} />
-                ) : null
+                ) : undefined
               }
             />
             <View style={{ marginTop: theme.spacing.md, marginBottom: 12 }}>

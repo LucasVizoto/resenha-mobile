@@ -12,9 +12,11 @@ import {
   TextInput,
   useColorScheme,
   View,
+  Image,
   type KeyboardEvent,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../../src/lib/auth';
@@ -24,6 +26,7 @@ import { insertMessage, listMessages, newMessageId, deleteMessagesByIds } from '
 import { listGroupMembers, fetchChatGroup } from '../../../src/lib/groups';
 import { displayNameFor } from '../../../src/lib/invites';
 import { deliverOutgoingMessage } from '../../../src/lib/message-sync';
+import { friendlyStorageError, uploadChatImage } from '../../../src/lib/storage';
 import { setActiveConversationId } from '../../../src/lib/notifications';
 import {
   addResenhaGuest,
@@ -34,9 +37,15 @@ import type { Conversation } from '../../../src/types/conversation';
 import type { Message } from '../../../src/types/message';
 import { formatResenhaDate, resenhaIconEmoji, type Resenha } from '../../../src/types/resenha';
 import {
+  IconCamera,
   IconChevronLeft,
+  IconImage,
+  IconPaperclip,
   IconPlus,
+  IconSparkles,
   IconTrash,
+  ChatImageViewer,
+  FaceFilterStudio,
   SoftAvatar,
   SoftButton,
   SoftEmptyState,
@@ -58,6 +67,14 @@ export default function ChatThreadScreen() {
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [body, setBody] = useState('');
+  const [attachment, setAttachment] = useState<{
+    uri: string;
+    mimeType?: string | null;
+    base64?: string | null;
+  } | null>(null);
+  const [attachOpen, setAttachOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [viewerUri, setViewerUri] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [resenhas, setResenhas] = useState<Resenha[]>([]);
@@ -186,25 +203,75 @@ export default function ChatThreadScreen() {
 
   const send = async () => {
     const text = body.trim();
-    if (!text || !user || !conversationId || sending) return;
+    if ((!text && !attachment) || !user || !conversationId || sending) return;
     setSending(true);
     try {
+      const id = newMessageId();
+      let imageUrl: string | null = null;
+      if (attachment) {
+        imageUrl = await uploadChatImage({
+          userId: user.id,
+          messageId: id,
+          uri: attachment.uri,
+          mimeType: attachment.mimeType,
+          base64: attachment.base64,
+        });
+      }
       const msg: Message = {
-        id: newMessageId(),
+        id,
         conversation_id: conversationId,
         sender_id: user.id,
         body: text,
+        image_url: imageUrl,
         created_at: new Date().toISOString(),
         status: 'sent',
         synced: false,
       };
       await insertMessage(msg);
       setBody('');
+      setAttachment(null);
       setMessages(await listMessages(conversationId));
       bump();
       void deliverOutgoingMessage(msg, user.id);
+    } catch (e) {
+      show({ title: 'Não foi possível enviar', message: friendlyStorageError(e) });
     } finally {
       setSending(false);
+    }
+  };
+
+  const pickFrom = async (fromCamera: boolean) => {
+    try {
+      if (fromCamera) {
+        const cam = await ImagePicker.requestCameraPermissionsAsync();
+        if (!cam.granted) {
+          show({ title: 'Imagem', message: 'Permissão da câmera negada.' });
+          return;
+        }
+      } else {
+        const lib = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!lib.granted) {
+          show({ title: 'Imagem', message: 'Permissão da galeria negada.' });
+          return;
+        }
+      }
+      const result = fromCamera
+        ? await ImagePicker.launchCameraAsync({
+            mediaTypes: ['images'],
+            quality: 0.75,
+            base64: true,
+          })
+        : await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            quality: 0.75,
+            base64: true,
+          });
+      if (result.canceled || !result.assets[0]) return;
+      const asset = result.assets[0];
+      setAttachment({ uri: asset.uri, mimeType: asset.mimeType, base64: asset.base64 });
+      setAttachOpen(false);
+    } catch (e) {
+      show({ title: 'Imagem', message: friendlyStorageError(e) });
     }
   };
 
@@ -387,7 +454,7 @@ export default function ChatThreadScreen() {
             <Text style={[theme.typography.caption, { color: theme.colors.textMuted, textAlign: 'center' }]}>
               {emptyHint}
             </Text>
-          ) : null
+          ) : undefined
         }
         renderItem={({ item }) => {
           const mine = item.sender_id === user?.id;
@@ -408,6 +475,21 @@ export default function ChatThreadScreen() {
                   {senderNames[item.sender_id] ?? 'Alguém'}
                 </Text>
               ) : null}
+              {item.image_url ? (
+                <Pressable
+                  onPress={() => {
+                    if (selecting) toggleSelect(item.id);
+                    else setViewerUri(item.image_url ?? null);
+                  }}
+                >
+                  <Image
+                    source={{ uri: item.image_url }}
+                    style={[styles.photo, item.body.trim() ? { marginBottom: 8 } : { marginBottom: 0 }]}
+                    resizeMode="cover"
+                  />
+                </Pressable>
+              ) : null}
+              {item.body.trim() ? (
               <Text
                 style={[
                   theme.typography.body,
@@ -416,6 +498,7 @@ export default function ChatThreadScreen() {
               >
                 {item.body}
               </Text>
+              ) : null}
               <Text
                 style={[
                   theme.typography.caption,
@@ -501,9 +584,80 @@ export default function ChatThreadScreen() {
         style={{
           marginHorizontal: 14,
           marginBottom: keyboardInset > 0 ? keyboardInset : 10 + Math.max(insets.bottom, 8),
+          gap: 8,
         }}
       >
+        {attachment ? (
+          <View style={[styles.preview, { backgroundColor: theme.colors.surface, borderRadius: theme.radii.lg }]}>
+            <Image source={{ uri: attachment.uri }} style={styles.previewImage} resizeMode="cover" />
+            <Pressable onPress={() => setAttachment(null)} accessibilityLabel="Remover imagem" hitSlop={8}>
+              <Text style={[theme.typography.bodyMedium, { color: theme.colors.danger }]}>Remover</Text>
+            </Pressable>
+          </View>
+        ) : null}
+        {attachOpen ? (
+          <View
+            style={[
+              styles.attachBar,
+              {
+                backgroundColor: theme.colors.surface,
+                borderRadius: theme.radii.lg,
+                ...theme.shadows.soft,
+              },
+            ]}
+          >
+            <Pressable
+              onPress={() => void pickFrom(false)}
+              disabled={sending}
+              accessibilityLabel="Galeria"
+              style={styles.attachChoice}
+            >
+              <IconImage color={theme.colors.brand.solid} size={22} />
+              <Text style={[theme.typography.caption, { color: theme.colors.textPrimary }]}>Galeria</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => void pickFrom(true)}
+              disabled={sending}
+              accessibilityLabel="Câmera"
+              style={styles.attachChoice}
+            >
+              <IconCamera color={theme.colors.brand.solid} size={22} />
+              <Text style={[theme.typography.caption, { color: theme.colors.textPrimary }]}>Câmera</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                setAttachOpen(false);
+                setFiltersOpen(true);
+              }}
+              disabled={sending}
+              accessibilityLabel="Filtros"
+              style={styles.attachChoice}
+            >
+              <IconSparkles color={theme.colors.brand.solid} size={22} />
+              <Text style={[theme.typography.caption, { color: theme.colors.textPrimary }]}>Filtros</Text>
+            </Pressable>
+          </View>
+        ) : null}
         <SoftGlass theme={theme} radius={28} contentStyle={styles.composer}>
+          <Pressable
+            onPress={() => setAttachOpen((open) => !open)}
+            disabled={sending}
+            accessibilityLabel={attachOpen ? 'Fechar anexo' : 'Anexar imagem'}
+            style={[
+              styles.attach,
+              {
+                backgroundColor: attachOpen
+                  ? theme.colors.brand.soft
+                  : theme.mode === 'dark'
+                    ? 'rgba(255,255,255,0.08)'
+                    : 'rgba(0,0,0,0.05)',
+                borderRadius: theme.radii.pill,
+                opacity: sending ? 0.6 : 1,
+              },
+            ]}
+          >
+            <IconPaperclip color={theme.colors.brand.solid} size={22} />
+          </Pressable>
           <TextInput
             style={[
               theme.typography.body,
@@ -535,13 +689,13 @@ export default function ChatThreadScreen() {
           />
           <Pressable
             onPress={send}
-            disabled={sending}
+            disabled={sending || (!body.trim() && !attachment)}
             style={[
               styles.send,
               {
                 backgroundColor: theme.colors.brand.solid,
                 borderRadius: theme.radii.pill,
-                opacity: sending ? 0.6 : 1,
+                opacity: sending || (!body.trim() && !attachment) ? 0.6 : 1,
                 ...theme.shadows.button,
               },
             ]}
@@ -551,6 +705,24 @@ export default function ChatThreadScreen() {
         </SoftGlass>
       </View>
       ) : null}
+
+      <ChatImageViewer uri={viewerUri} onClose={() => setViewerUri(null)} />
+
+      <FaceFilterStudio
+        visible={filtersOpen}
+        theme={theme}
+        authorId={user?.id ?? null}
+        authorName={
+          String(user?.user_metadata?.first_name || '').trim() ||
+          user?.email?.split('@')[0] ||
+          'Você'
+        }
+        onClose={() => setFiltersOpen(false)}
+        onCapture={(shot) => {
+          setAttachment({ uri: shot.uri, mimeType: shot.mimeType, base64: shot.base64 });
+          setFiltersOpen(false);
+        }}
+      />
 
       <Modal visible={addOpen} animationType="slide" transparent onRequestClose={() => setAddOpen(false)}>
         <View style={styles.modalRoot}>
@@ -706,6 +878,47 @@ const styles = StyleSheet.create({
     minHeight: 44,
     paddingHorizontal: 18,
     justifyContent: 'center',
+  },
+  attach: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  attachBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  attachChoice: {
+    flex: 1,
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 8,
+  },
+  photo: {
+    width: 220,
+    height: 220,
+    borderRadius: 16,
+    marginBottom: 8,
+    backgroundColor: 'rgba(0,0,0,0.08)',
+  },
+  preview: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 8,
+  },
+  previewImage: {
+    width: 64,
+    height: 64,
+    borderRadius: 12,
   },
   modalRoot: { flex: 1, justifyContent: 'flex-end' },
   backdrop: { ...StyleSheet.absoluteFill },

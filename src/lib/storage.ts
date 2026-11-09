@@ -98,6 +98,83 @@ export async function uploadProfileAvatar(params: {
   return updateMyAvatarUrl(params.userId, avatarUrl);
 }
 
+export async function uploadChatImage(params: {
+  userId: string;
+  messageId: string;
+  uri: string;
+  mimeType?: string | null;
+  base64?: string | null;
+}): Promise<string> {
+  if (!supabaseConfigured) {
+    throw new Error(missingSupabaseEnvMessage);
+  }
+
+  const ext = extensionFromMime(params.mimeType);
+  const contentType = params.mimeType?.startsWith('image/')
+    ? params.mimeType
+    : contentTypeFromExt(ext);
+  const path = `${params.userId}/chat/${params.messageId}.${ext}`;
+  const bucket = supabaseStorageBucket;
+  const body = await readLocalImageBytes(params.uri, params.base64);
+
+  const { error: uploadError } = await supabase.storage.from(bucket).upload(path, body, {
+    contentType,
+    upsert: false,
+    cacheControl: '3600',
+  });
+  if (uploadError) {
+    throw new Error(friendlyStorageError(uploadError));
+  }
+
+  const { data: publicData } = supabase.storage.from(bucket).getPublicUrl(path);
+  const publicUrl = publicData?.publicUrl ?? '';
+  if (publicUrl) return publicUrl;
+
+  const signed = await supabase.storage.from(bucket).createSignedUrl(path, 60 * 60 * 24 * 365);
+  if (signed.error || !signed.data?.signedUrl) {
+    throw new Error(friendlyStorageError(signed.error ?? new Error('URL da imagem indisponível.')));
+  }
+  return signed.data.signedUrl;
+}
+
+export async function uploadFilterImage(params: {
+  userId: string;
+  uri: string;
+  mimeType?: string | null;
+  base64?: string | null;
+}): Promise<string> {
+  if (!supabaseConfigured) {
+    throw new Error(missingSupabaseEnvMessage);
+  }
+
+  const ext = extensionFromMime(params.mimeType);
+  const contentType = params.mimeType?.startsWith('image/')
+    ? params.mimeType
+    : contentTypeFromExt(ext);
+  const path = `${params.userId}/filters/${Date.now()}-${Math.floor(Math.random() * 1e6)}.${ext}`;
+  const bucket = supabaseStorageBucket;
+  const body = await readLocalImageBytes(params.uri, params.base64);
+
+  const { error: uploadError } = await supabase.storage.from(bucket).upload(path, body, {
+    contentType,
+    upsert: false,
+    cacheControl: '3600',
+  });
+  if (uploadError) {
+    throw new Error(friendlyStorageError(uploadError));
+  }
+
+  const { data: publicData } = supabase.storage.from(bucket).getPublicUrl(path);
+  const publicUrl = publicData?.publicUrl ?? '';
+  if (publicUrl) return publicUrl;
+
+  const signed = await supabase.storage.from(bucket).createSignedUrl(path, 60 * 60 * 24 * 365);
+  if (signed.error || !signed.data?.signedUrl) {
+    throw new Error(friendlyStorageError(signed.error ?? new Error('URL da imagem indisponível.')));
+  }
+  return signed.data.signedUrl;
+}
+
 export async function uploadGroupAvatar(params: {
   ownerId: string;
   groupId: string;

@@ -195,6 +195,62 @@ export function IconCamera(props: IconProps) {
   );
 }
 
+export function IconPaperclip(props: IconProps) {
+  const { color, size } = iconDefaults(props);
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M8.2 12.2 14.6 5.8a3.1 3.1 0 0 1 4.4 4.4l-8 8a4.4 4.4 0 0 1-6.2-6.2l7.4-7.4"
+        stroke={color}
+        strokeWidth={1.7}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+export function IconImage(props: IconProps) {
+  const { color, size } = iconDefaults(props);
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M5 7.2h14A1.5 1.5 0 0 1 20.5 8.7v8.6A1.5 1.5 0 0 1 19 18.8H5A1.5 1.5 0 0 1 3.5 17.3V8.7A1.5 1.5 0 0 1 5 7.2Z"
+        stroke={color}
+        strokeWidth={1.7}
+      />
+      <Circle cx="8.2" cy="10.6" r="1.2" fill={color} />
+      <Path
+        d="m6.2 16.4 3.2-3.1 2.2 2 2.4-2.6 3.8 3.7"
+        stroke={color}
+        strokeWidth={1.7}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+export function IconSparkles(props: IconProps) {
+  const { color, size } = iconDefaults(props);
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M12 3.5 13.2 8.2 18 9.4 13.2 10.6 12 15.2 10.8 10.6 6 9.4 10.8 8.2 12 3.5Z"
+        stroke={color}
+        strokeWidth={1.7}
+        strokeLinejoin="round"
+      />
+      <Path
+        d="m17.2 14.2.6 2 2 .6-2 .6-.6 2-.6-2-2-.6 2-.6.6-2Z"
+        stroke={color}
+        strokeWidth={1.5}
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
 export function IconResenha(props: IconProps) {
   const { color, size } = iconDefaults(props);
   return (

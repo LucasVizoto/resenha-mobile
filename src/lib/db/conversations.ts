@@ -82,7 +82,12 @@ export async function listConversations(myId: string): Promise<Conversation[]> {
     `SELECT
        c.id, c.title, c.peer_user_id, c.peer_display_name, c.peer_avatar_url, c.updated_at, c.last_read_at,
        c.kind, c.description,
-       (SELECT m.body FROM messages m
+       (SELECT CASE
+          WHEN length(trim(m.body)) > 0 THEN m.body
+          WHEN m.image_url IS NOT NULL AND length(trim(m.image_url)) > 0 THEN 'Imagem'
+          ELSE m.body
+        END
+        FROM messages m
          WHERE m.conversation_id = c.id
          ORDER BY m.created_at DESC LIMIT 1) AS last_message_body,
        (SELECT m.sender_id FROM messages m

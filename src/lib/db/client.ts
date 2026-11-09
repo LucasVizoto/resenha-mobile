@@ -65,6 +65,7 @@ async function initDbUnlocked(userId?: string | null): Promise<SQLite.SQLiteData
     ['kind', "TEXT DEFAULT 'dm'"],
     ['description', 'TEXT'],
   ]);
+  await ensureColumns(next, 'messages', [['image_url', 'TEXT']]);
   db = next;
   dbKey = key;
   return next;

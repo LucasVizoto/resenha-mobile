@@ -1,6 +1,19 @@
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Platform, StyleSheet, View, type ViewStyle } from 'react-native';
-import { WebView, type WebViewMessageEvent } from 'react-native-webview';
+import {
+  WebView as BaseWebView,
+  type WebViewMessageEvent,
+  type WebViewProps,
+} from 'react-native-webview';
+
+type MapWebViewHandle = {
+  injectJavaScript: (script: string) => void;
+};
+
+// SDK 58 / webview 14: o genérico padrão vira `props: never`.
+const WebView = BaseWebView as unknown as React.ComponentType<
+  WebViewProps & React.RefAttributes<MapWebViewHandle>
+>;
 
 type Props = {
   latitude: number;
@@ -36,7 +49,7 @@ export function ResenhaMap({
   onTouchEnd,
   style,
 }: Props) {
-  const webRef = useRef<WebView>(null);
+  const webRef = useRef<MapWebViewHandle>(null);
   const start = useRef({ latitude, longitude });
   const coordsRef = useRef({ latitude, longitude });
   coordsRef.current = { latitude, longitude };

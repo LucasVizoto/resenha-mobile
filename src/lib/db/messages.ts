@@ -4,8 +4,22 @@ import type { Message } from '../../types/message';
 
 export async function listMessages(conversationId: string): Promise<Message[]> {
   return getDb().getAllAsync<Message>(
-    `SELECT id, conversation_id, sender_id, body, created_at, status, synced
+    `SELECT id, conversation_id, sender_id, body, image_url, created_at, status, synced
      FROM messages WHERE conversation_id = ? ORDER BY created_at ASC`,
+    [conversationId],
+  );
+}
+
+export async function listConversationImages(
+  conversationId: string,
+): Promise<{ id: string; image_url: string; created_at: string }[]> {
+  return getDb().getAllAsync(
+    `SELECT id, image_url, created_at
+     FROM messages
+     WHERE conversation_id = ?
+       AND image_url IS NOT NULL
+       AND length(trim(image_url)) > 0
+     ORDER BY created_at DESC`,
     [conversationId],
   );
 }
@@ -18,13 +32,14 @@ export async function insertMessage(m: Message): Promise<void> {
     });
   }
   await getDb().runAsync(
-    `INSERT INTO messages (id, conversation_id, sender_id, body, created_at, status, synced)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO messages (id, conversation_id, sender_id, body, image_url, created_at, status, synced)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       m.id,
       m.conversation_id,
       m.sender_id,
       m.body,
+      m.image_url ?? null,
       m.created_at,
       m.status,
       m.synced ? 1 : 0,
@@ -40,9 +55,9 @@ export async function insertIncomingMessage(m: Message): Promise<boolean> {
   );
   if (skipped) return false;
   const result = await getDb().runAsync(
-    `INSERT OR IGNORE INTO messages (id, conversation_id, sender_id, body, created_at, status, synced)
-     VALUES (?, ?, ?, ?, ?, ?, 1)`,
-    [m.id, m.conversation_id, m.sender_id, m.body, m.created_at, m.status],
+    `INSERT OR IGNORE INTO messages (id, conversation_id, sender_id, body, image_url, created_at, status, synced)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
+    [m.id, m.conversation_id, m.sender_id, m.body, m.image_url ?? null, m.created_at, m.status],
   );
   if (result.changes > 0) {
     await touchConversation(m.conversation_id, m.created_at);
@@ -57,7 +72,7 @@ export async function markMessageSynced(id: string): Promise<void> {
 
 export async function listUnsyncedMessages(): Promise<Message[]> {
   return getDb().getAllAsync<Message>(
-    `SELECT id, conversation_id, sender_id, body, created_at, status, synced
+    `SELECT id, conversation_id, sender_id, body, image_url, created_at, status, synced
      FROM messages WHERE synced = 0 ORDER BY created_at ASC`,
   );
 }

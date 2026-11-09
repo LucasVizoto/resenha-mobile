@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Location from 'expo-location';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { isGoogleAuthCancelled, useAuth } from '../../../src/lib/auth';
 import { listMyContacts } from '../../../src/lib/contacts';
 import {
@@ -23,10 +23,13 @@ import {
   guestEmailsFromProfiles,
   isGoogleCalendarAuthError,
 } from '../../../src/lib/google-calendar';
+import { friendlyGroupResenhaError, linkGroupResenha } from '../../../src/lib/group-resenhas';
+import { listGroupMembers } from '../../../src/lib/groups';
 import { displayNameFor } from '../../../src/lib/invites';
 import { isAbortError, searchPlaces, type PlaceSuggestion } from '../../../src/lib/places';
 import { addCustomIcon, listCustomIcons } from '../../../src/lib/resenha-icons';
 import { createResenha, friendlyResenhaError } from '../../../src/lib/resenhas';
+import type { ChatGroupMember } from '../../../src/types/group';
 import type { Profile } from '../../../src/types/profile';
 import { RESENHA_ICONS, type ResenhaIconOption } from '../../../src/types/resenha';
 import {
@@ -63,6 +66,8 @@ export default function NewResenhaScreen() {
   const chrome = useGlassChrome();
   const { user, ensureGoogleCalendarAccess } = useAuth();
   const router = useRouter();
+  const { groupId: groupIdParam } = useLocalSearchParams<{ groupId?: string }>();
+  const lockedGroupId = Array.isArray(groupIdParam) ? groupIdParam[0] : groupIdParam;
   const { show } = useDialog();
   const userPickedPlace = useRef(false);
   const [name, setName] = useState('');
@@ -90,6 +95,7 @@ export default function NewResenhaScreen() {
   biasRef.current = coords;
   const [mapLocked, setMapLocked] = useState(false);
   const [contacts, setContacts] = useState<Profile[]>([]);
+  const [lockedGuests, setLockedGuests] = useState<ChatGroupMember[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loadingContacts, setLoadingContacts] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -121,11 +127,26 @@ export default function NewResenhaScreen() {
     let alive = true;
     (async () => {
       if (!user) return;
+      setLoadingContacts(true);
       try {
+        if (lockedGroupId) {
+          const members = await listGroupMembers(lockedGroupId);
+          const others = members.filter((member) => member.user_id !== user.id);
+          if (!alive) return;
+          setLockedGuests(members);
+          setContacts([]);
+          setSelected(new Set(others.map((member) => member.user_id)));
+          return;
+        }
         const rows = await listMyContacts(user.id);
-        if (alive) setContacts(rows);
+        if (!alive) return;
+        setLockedGuests([]);
+        setContacts(rows);
       } catch {
-        if (alive) setContacts([]);
+        if (!alive) return;
+        setContacts([]);
+        setLockedGuests([]);
+        setSelected(new Set());
       } finally {
         if (alive) setLoadingContacts(false);
       }
@@ -133,7 +154,7 @@ export default function NewResenhaScreen() {
     return () => {
       alive = false;
     };
-  }, [user]);
+  }, [user, lockedGroupId]);
 
   const applyCoords = useCallback(
     async (next: { latitude: number; longitude: number }, opts?: { recenter?: boolean; reverse?: boolean }) => {
@@ -425,6 +446,16 @@ export default function NewResenhaScreen() {
         longitude: coords.longitude,
         guestIds,
       });
+      if (lockedGroupId) {
+        try {
+          await linkGroupResenha(lockedGroupId, id);
+        } catch (linkError) {
+          show({
+            title: 'Resenha marcada',
+            message: `O encontro foi criado, mas não entrou no grupo. ${friendlyGroupResenhaError(linkError)}`,
+          });
+        }
+      }
       setCalendarError(null);
       setCalendarPrompt({
         id,
@@ -661,11 +692,61 @@ export default function NewResenhaScreen() {
           Quem vai
         </Text>
         <Text style={[theme.typography.caption, { color: theme.colors.textMuted, marginBottom: 10 }]}>
-          Só dá para convidar quem está nos seus contatos. A pessoa precisa conhecer ao menos um
-          participante da resenha.
+          {lockedGroupId
+            ? 'Esta resenha fica só com as pessoas deste grupo.'
+            : 'Só dá para convidar quem está nos seus contatos. A pessoa precisa conhecer ao menos um participante da resenha.'}
         </Text>
         {loadingContacts ? (
           <ActivityIndicator color={theme.colors.brand.solid} />
+        ) : lockedGroupId ? (
+          lockedGuests.filter((member) => member.user_id !== user?.id).length === 0 ? (
+            <Text style={[theme.typography.body, { color: theme.colors.textSecondary }]}>
+              O grupo precisa de mais alguém além de você para marcar a resenha.
+            </Text>
+          ) : (
+            <View style={{ gap: 10 }}>
+              {[...lockedGuests]
+                .sort((a, b) => Number(b.user_id === user?.id) - Number(a.user_id === user?.id))
+                .map((member) => {
+                const profile = member.profile;
+                const isMe = member.user_id === user?.id;
+                const title = isMe
+                  ? 'Você'
+                  : profile?.display_name?.trim() || (profile ? displayNameFor(profile) : 'Participante');
+                return (
+                  <View
+                    key={member.user_id}
+                    style={[
+                      styles.guest,
+                      {
+                        backgroundColor: theme.colors.surface,
+                        borderRadius: theme.radii.lg,
+                        borderWidth: 1.5,
+                        borderColor: theme.colors.brand.solid,
+                      },
+                    ]}
+                  >
+                    <SoftAvatar theme={theme} uri={profile?.avatar_url} name={title} size={44} />
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={[theme.typography.bodyMedium, { color: theme.colors.textPrimary }]}
+                        numberOfLines={1}
+                      >
+                        {title}
+                      </Text>
+                      <Text
+                        style={[theme.typography.caption, { color: theme.colors.textSecondary }]}
+                        numberOfLines={1}
+                      >
+                        {isMe ? 'Organiza a resenha' : 'Do grupo'}
+                      </Text>
+                    </View>
+                    <Text style={{ color: theme.colors.brand.solid }}>✓</Text>
+                  </View>
+                );
+              })}
+            </View>
+          )
         ) : contacts.length === 0 ? (
           <Text style={[theme.typography.body, { color: theme.colors.textSecondary }]}>
             Adicione contatos antes de marcar uma resenha.
@@ -707,7 +788,13 @@ export default function NewResenhaScreen() {
         )}
 
         <View style={{ marginTop: theme.spacing.lg }}>
-          <SoftButton theme={theme} label="Marcar resenha" onPress={onSave} loading={saving} />
+          <SoftButton
+            theme={theme}
+            label="Marcar resenha"
+            onPress={onSave}
+            loading={saving}
+            disabled={saving || (Boolean(lockedGroupId) && (loadingContacts || selected.size === 0))}
+          />
         </View>
       </ScrollView>
 

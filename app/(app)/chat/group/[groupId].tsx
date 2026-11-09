@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   Modal,
   Pressable,
   ScrollView,
@@ -20,11 +21,14 @@ import {
 } from '../../../../src/lib/groups';
 import { listMyContacts } from '../../../../src/lib/contacts';
 import { displayNameFor } from '../../../../src/lib/invites';
-import { useAuth } from '../../../../src/lib/auth';
+import { useAuth, isGoogleAuthCancelled } from '../../../../src/lib/auth';
 import { useChatInbox } from '../../../../src/lib/chat-inbox';
-import { deleteConversationLocally } from '../../../../src/lib/db/messages';
+import { deleteConversationLocally, listConversationImages } from '../../../../src/lib/db/messages';
+import { findGroupOriginResenhaForHost } from '../../../../src/lib/group-resenhas';
+import { createResenhaPhotoAlbum, friendlyPhotosError, openGooglePhotos } from '../../../../src/lib/google-photos';
 import type { ChatGroup, ChatGroupMember } from '../../../../src/types/group';
 import type { Profile } from '../../../../src/types/profile';
+import type { Resenha } from '../../../../src/types/resenha';
 import {
   IconChevronLeft,
   SoftAvatar,
@@ -32,6 +36,7 @@ import {
   SoftEmptyState,
   SoftListRow,
   WaveHeader,
+  ChatMediaGrid,
   useDialog,
   useGlassChrome,
 } from '../../../../src/soft-ui';
@@ -43,7 +48,7 @@ export default function GroupProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { show } = useDialog();
-  const { user } = useAuth();
+  const { user, ensureGooglePhotosAccess } = useAuth();
   const { bump } = useChatInbox();
   const { groupId } = useLocalSearchParams<{ groupId: string }>();
   const [group, setGroup] = useState<ChatGroup | null>(null);
@@ -57,6 +62,11 @@ export default function GroupProfileScreen() {
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [wipeLocal, setWipeLocal] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [originResenha, setOriginResenha] = useState<Resenha | null>(null);
+  const [albumOpen, setAlbumOpen] = useState(false);
+  const [albumShots, setAlbumShots] = useState<{ id: string; image_url: string }[]>([]);
+  const [albumPicked, setAlbumPicked] = useState<Set<string>>(new Set());
+  const [albumBusy, setAlbumBusy] = useState(false);
 
   const memberIds = useMemo(() => new Set(members.map((m) => m.user_id)), [members]);
   const addable = useMemo(
@@ -72,6 +82,7 @@ export default function GroupProfileScreen() {
       const row = await fetchChatGroup(groupId);
       setGroup(row);
       setMembers(row ? await listGroupMembers(row.id) : []);
+      setOriginResenha(row ? await findGroupOriginResenhaForHost(row) : null);
     } catch (e) {
       setError(friendlyGroupError(e));
       setGroup(null);
@@ -110,6 +121,54 @@ export default function GroupProfileScreen() {
     });
   };
 
+  const openAlbum = async () => {
+    if (!group) return;
+    const shots = await listConversationImages(group.id).catch(() => []);
+    setAlbumShots(shots);
+    setAlbumPicked(new Set(shots.map((shot) => shot.id)));
+    setAlbumOpen(true);
+  };
+
+  const toggleAlbum = (id: string) => {
+    setAlbumPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const submitAlbum = async () => {
+    if (!originResenha || albumBusy) return;
+    const chosen = albumShots.filter((shot) => albumPicked.has(shot.id));
+    if (chosen.length === 0) return;
+    setAlbumBusy(true);
+    try {
+      const result = await createResenhaPhotoAlbum({
+        title: originResenha.name,
+        images: chosen.map((shot) => ({ id: shot.id, url: shot.image_url })),
+        getToken: (force) => ensureGooglePhotosAccess({ force }),
+      });
+      setAlbumOpen(false);
+      show({
+        title: 'Álbum criado',
+        message:
+          result.failed > 0
+            ? `${result.added} foto(s) entraram no Google Fotos. ${result.failed} não foram.`
+            : `${result.added} foto(s) foram para o álbum "${originResenha.name}" no Google Fotos.`,
+        actions: [
+          { label: 'Abrir no Fotos', onPress: () => void openGooglePhotos() },
+          { label: 'OK', variant: 'ghost' },
+        ],
+      });
+    } catch (e) {
+      if (isGoogleAuthCancelled(e)) return;
+      show({ title: 'Google Fotos', message: friendlyPhotosError(e) });
+    } finally {
+      setAlbumBusy(false);
+    }
+  };
+
   const submitAdd = async () => {
     if (!group || picked.size === 0 || saving) return;
     setSaving(true);
@@ -131,17 +190,37 @@ export default function GroupProfileScreen() {
     setSaving(true);
     try {
       await leaveChatGroup(group.id);
-      if (wipeLocal) {
-        await deleteConversationLocally(group.id);
-      }
-      setLeaveOpen(false);
-      bump();
-      router.replace('/(app)/chat');
     } catch (e) {
       show({ title: 'Não foi possível sair', message: friendlyGroupError(e) });
-    } finally {
       setSaving(false);
+      return;
     }
+    if (wipeLocal) {
+      try {
+        await deleteConversationLocally(group.id);
+      } catch (e) {
+        setLeaveOpen(false);
+        setSaving(false);
+        show({
+          title: 'Você saiu do grupo',
+          message: `As mensagens deste aparelho não foram apagadas. ${friendlyGroupError(e)}`,
+          actions: [
+            {
+              label: 'OK',
+              onPress: () => {
+                bump();
+                router.replace('/(app)/chat');
+              },
+            },
+          ],
+        });
+        return;
+      }
+    }
+    setLeaveOpen(false);
+    bump();
+    router.replace('/(app)/chat');
+    setSaving(false);
   };
 
   if (loading && !group) {
@@ -224,10 +303,22 @@ export default function GroupProfileScreen() {
           </Text>
         </View>
 
+        {originResenha ? (
+          <SoftButton theme={theme} label="Gerar Álbum da Resenha" onPress={() => void openAlbum()} />
+        ) : null}
+
+        <ChatMediaGrid conversationId={group.id} theme={theme} />
+
         <SoftButton
           theme={theme}
           label="Abrir conversa"
           onPress={() => router.replace(`/(app)/chat/${group.id}`)}
+        />
+        <SoftButton
+          theme={theme}
+          variant="secondary"
+          label="Ver resenhas"
+          onPress={() => router.push(`/(app)/chat/group-resenhas/${group.id}`)}
         />
         <SoftButton theme={theme} variant="secondary" label="Adicionar pessoas" onPress={() => void openAdd()} />
         <SoftButton
@@ -265,6 +356,97 @@ export default function GroupProfileScreen() {
           );
         })}
       </ScrollView>
+
+      <Modal
+        visible={albumOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => {
+          if (!albumBusy) setAlbumOpen(false);
+        }}
+      >
+        <View style={styles.modalRoot}>
+          <Pressable
+            style={[styles.backdrop, { backgroundColor: theme.colors.overlay }]}
+            onPress={() => {
+              if (!albumBusy) setAlbumOpen(false);
+            }}
+          />
+          <View
+            style={[
+              styles.sheet,
+              {
+                backgroundColor: theme.colors.surface,
+                paddingHorizontal: theme.screenPadding.horizontal,
+                paddingBottom: Math.max(insets.bottom, 16),
+                ...theme.shadows.softStrong,
+              },
+            ]}
+          >
+            <Text style={[theme.typography.heading, { color: theme.colors.textPrimary }]}>
+              Gerar Álbum da Resenha
+            </Text>
+            <Text
+              style={[
+                theme.typography.caption,
+                { color: theme.colors.textSecondary, marginTop: 6, marginBottom: theme.spacing.md },
+              ]}
+            >
+              Escolha as fotos da mídia do grupo que entram no Google Fotos.
+            </Text>
+            {albumShots.length === 0 ? (
+              <SoftEmptyState
+                theme={theme}
+                title="Nenhuma foto"
+                description="Este grupo ainda não tem imagens na mídia."
+              />
+            ) : (
+              <ScrollView style={{ maxHeight: 360 }} contentContainerStyle={styles.albumGrid}>
+                {albumShots.map((shot) => {
+                  const on = albumPicked.has(shot.id);
+                  return (
+                    <Pressable
+                      key={shot.id}
+                      onPress={() => toggleAlbum(shot.id)}
+                      disabled={albumBusy}
+                      style={styles.albumTileWrap}
+                    >
+                      <Image source={{ uri: shot.image_url }} style={styles.albumTile} resizeMode="cover" />
+                      <View
+                        style={[
+                          styles.albumCheck,
+                          {
+                            borderColor: on ? theme.colors.brand.solid : '#FFFFFF',
+                            backgroundColor: on ? theme.colors.brand.solid : 'transparent',
+                          },
+                        ]}
+                      >
+                        {on ? <Text style={{ color: theme.colors.textOnBrand, fontWeight: '700' }}>✓</Text> : null}
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            )}
+            <View style={{ marginTop: theme.spacing.md, gap: theme.spacing.sm }}>
+              <SoftButton
+                theme={theme}
+                label={albumPicked.size === 0 ? 'Criar álbum' : `Criar álbum (${albumPicked.size})`}
+                onPress={() => void submitAlbum()}
+                loading={albumBusy}
+                disabled={albumBusy || albumPicked.size === 0}
+              />
+              <SoftButton
+                theme={theme}
+                variant="ghost"
+                label="Fechar"
+                onPress={() => setAlbumOpen(false)}
+                disabled={albumBusy}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={addOpen} animationType="slide" transparent onRequestClose={() => setAddOpen(false)}>
         <View style={styles.modalRoot}>
@@ -433,6 +615,31 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 28,
     paddingTop: 24,
     maxHeight: '86%',
+  },
+  albumGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  albumTileWrap: {
+    width: 96,
+    height: 96,
+  },
+  albumTile: {
+    width: 96,
+    height: 96,
+    borderRadius: 12,
+  },
+  albumCheck: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   check: {
     width: 24,

@@ -24,6 +24,7 @@ type RemoteChatMessage = {
   sender_id: string;
   recipient_id: string;
   body: string;
+  image_url: string | null;
   created_at: string;
 };
 
@@ -33,13 +34,16 @@ function asRemote(row: Record<string, unknown>): RemoteChatMessage | null {
   const senderId = String(row.sender_id ?? '');
   const recipientId = String(row.recipient_id ?? '');
   const body = String(row.body ?? '').trim();
-  if (!id || !conversationId || !senderId || !recipientId || !body) return null;
+  const imageUrl = typeof row.image_url === 'string' ? row.image_url.trim() : '';
+  if (!id || !conversationId || !senderId || !recipientId) return null;
+  if (!body && !imageUrl) return null;
   return {
     id,
     conversation_id: conversationId,
     sender_id: senderId,
     recipient_id: recipientId,
     body,
+    image_url: imageUrl || null,
     created_at: String(row.created_at ?? new Date().toISOString()),
   };
 }
@@ -91,6 +95,7 @@ export async function applyIncomingRemoteMessage(
     conversation_id: remote.conversation_id,
     sender_id: remote.sender_id,
     body: remote.body,
+    image_url: remote.image_url,
     created_at: remote.created_at,
     status: 'sent',
     synced: true,
@@ -111,7 +116,7 @@ export async function applyIncomingRemoteMessage(
         messageId: remote.id,
         conversationId: remote.conversation_id,
         title,
-        body: remote.body,
+        body: remote.body || 'Imagem',
       });
     }
   }
@@ -120,12 +125,26 @@ export async function applyIncomingRemoteMessage(
 
 export async function pullIncomingMessages(myId: string): Promise<number> {
   if (!supabaseConfigured) return 0;
-  const { data, error } = await supabase
+  let data: Record<string, unknown>[] | null = null;
+  let error: { message: string } | null = null;
+  const first = await supabase
     .from('chat_messages')
-    .select('id, conversation_id, sender_id, recipient_id, body, created_at')
+    .select('id, conversation_id, sender_id, recipient_id, body, image_url, created_at')
     .eq('recipient_id', myId)
     .order('created_at', { ascending: true })
     .limit(300);
+  data = (first.data as Record<string, unknown>[] | null) ?? null;
+  error = first.error;
+  if (error && /image_url/i.test(error.message)) {
+    const retry = await supabase
+      .from('chat_messages')
+      .select('id, conversation_id, sender_id, recipient_id, body, created_at')
+      .eq('recipient_id', myId)
+      .order('created_at', { ascending: true })
+      .limit(300);
+    data = (retry.data as Record<string, unknown>[] | null) ?? null;
+    error = retry.error;
+  }
   if (error) {
     if (!missingSchema(error.message)) {
       console.warn('[Resenha] Falha ao puxar mensagens', error.message);
@@ -134,7 +153,7 @@ export async function pullIncomingMessages(myId: string): Promise<number> {
   }
   let applied = 0;
   for (const row of data ?? []) {
-    const ok = await applyIncomingRemoteMessage(row as Record<string, unknown>, myId, {
+    const ok = await applyIncomingRemoteMessage(row, myId, {
       notify: false,
     });
     if (ok) applied += 1;
@@ -158,7 +177,7 @@ async function notifyPeerPush(
   await sendExpoPushToTokens({
     tokens,
     title: senderName,
-    body: msg.body,
+    body: msg.body.trim() || 'Imagem',
     conversationId: msg.conversation_id,
     messageId: msg.id,
   });
@@ -176,7 +195,7 @@ async function notifyGroupPush(groupId: string, msg: Message, title: string): Pr
   await sendExpoPushToTokens({
     tokens,
     title,
-    body: msg.body,
+    body: msg.body.trim() || 'Imagem',
     conversationId: msg.conversation_id,
     messageId: msg.id,
   });
@@ -186,12 +205,20 @@ export async function deliverOutgoingMessage(msg: Message, myId: string): Promis
   if (!supabaseConfigured) return;
 
   if (isGroupConversationId(msg.conversation_id)) {
-    const { error } = await supabase.rpc('post_group_message', {
+    const payload: {
+      p_id: string;
+      p_group_id: string;
+      p_body: string;
+      p_created_at: string;
+      p_image_url?: string;
+    } = {
       p_id: msg.id,
       p_group_id: msg.conversation_id,
       p_body: msg.body,
       p_created_at: msg.created_at,
-    });
+    };
+    if (msg.image_url) payload.p_image_url = msg.image_url;
+    const { error } = await supabase.rpc('post_group_message', payload);
     if (error) {
       if (!missingSchema(error.message)) {
         console.warn('[Resenha] Falha ao sincronizar mensagem do grupo', error.message);
@@ -214,17 +241,24 @@ export async function deliverOutgoingMessage(msg: Message, myId: string): Promis
   const peerId = otherParticipantId(msg.conversation_id, myId);
   if (!peerId) return;
 
-  const { error } = await supabase.from('chat_messages').upsert(
-    {
-      id: msg.id,
-      conversation_id: msg.conversation_id,
-      sender_id: msg.sender_id,
-      recipient_id: peerId,
-      body: msg.body,
-      created_at: msg.created_at,
-    },
-    { onConflict: 'id' },
-  );
+  const row: {
+    id: string;
+    conversation_id: string;
+    sender_id: string;
+    recipient_id: string;
+    body: string;
+    created_at: string;
+    image_url?: string;
+  } = {
+    id: msg.id,
+    conversation_id: msg.conversation_id,
+    sender_id: msg.sender_id,
+    recipient_id: peerId,
+    body: msg.body,
+    created_at: msg.created_at,
+  };
+  if (msg.image_url) row.image_url = msg.image_url;
+  const { error } = await supabase.from('chat_messages').upsert(row, { onConflict: 'id' });
   if (error) {
     if (!missingSchema(error.message)) {
       console.warn('[Resenha] Falha ao sincronizar mensagem', error.message);

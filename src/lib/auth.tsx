@@ -14,6 +14,7 @@ import { initDb } from './db/client';
 import { upsertMyProfile } from './profile';
 import { missingSupabaseEnvMessage, supabase, supabaseConfigured } from './supabase';
 import { GOOGLE_CALENDAR_SCOPE } from './google-calendar';
+import { GOOGLE_PHOTOS_SCOPE } from './google-photos';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -171,6 +172,7 @@ type AuthContextValue = {
   signOut: () => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   ensureGoogleCalendarAccess: (options?: { force?: boolean }) => Promise<string>;
+  ensureGooglePhotosAccess: (options?: { force?: boolean }) => Promise<string>;
   resetPassword: (email: string) => Promise<void>;
   updateEmail: (email: string) => Promise<User>;
 };
@@ -305,7 +307,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const runGoogleOAuth = useCallback(
-    async (calendar: boolean, linkExisting = false): Promise<Session> => {
+    async (mode: 'basic' | 'calendar' | 'photos', linkExisting = false): Promise<Session> => {
       if (googleOAuthFlight) return googleOAuthFlight;
       googleOAuthFlight = (async () => {
         if (!supabaseConfigured) {
@@ -315,18 +317,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (__DEV__) {
           console.warn('[Resenha] Redirect do Google para colar no Supabase:', redirectTo);
         }
+        const extraScope =
+          mode === 'photos'
+            ? `${GOOGLE_CALENDAR_SCOPE} ${GOOGLE_PHOTOS_SCOPE}`
+            : mode === 'calendar'
+              ? GOOGLE_CALENDAR_SCOPE
+              : null;
         const options = {
           redirectTo,
           skipBrowserRedirect: true,
-          ...(calendar
+          ...(extraScope
             ? {
-                scopes: `email profile ${GOOGLE_CALENDAR_SCOPE}`,
+                scopes: `email profile ${extraScope}`,
                 queryParams: { access_type: 'offline', prompt: 'consent' },
               }
             : {}),
         };
         let authUrl: string | null = null;
-        if (calendar && linkExisting) {
+        if (extraScope && linkExisting) {
           const linked = await supabase.auth.linkIdentity({
             provider: 'google',
             options,
@@ -362,7 +370,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const signInWithGoogle = useCallback(async () => {
-    await runGoogleOAuth(false);
+    await runGoogleOAuth('basic');
   }, [runGoogleOAuth]);
 
   const ensureGoogleCalendarAccess = useCallback(
@@ -371,11 +379,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const existing = session?.provider_token?.trim();
         if (existing) return existing;
       }
-      const next = await runGoogleOAuth(true, Boolean(session));
+      const next = await runGoogleOAuth('calendar', Boolean(session));
       const token = next.provider_token?.trim();
       if (!token) {
         throw new Error(
           'O Google não devolveu token da agenda. Confira o escopo calendar.events no Google Cloud e no provider Google do Supabase (docs/google-credentials.md).',
+        );
+      }
+      return token;
+    },
+    [runGoogleOAuth, session],
+  );
+
+  const ensureGooglePhotosAccess = useCallback(
+    async (options?: { force?: boolean }): Promise<string> => {
+      if (!options?.force) {
+        const existing = session?.provider_token?.trim();
+        if (existing) return existing;
+      }
+      const next = await runGoogleOAuth('photos', Boolean(session));
+      const token = next.provider_token?.trim();
+      if (!token) {
+        throw new Error(
+          'O Google não devolveu token do Fotos. Inclua o escopo photoslibrary.appendonly no provider Google do Supabase.',
         );
       }
       return token;
@@ -422,6 +448,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signOut,
       signInWithGoogle,
       ensureGoogleCalendarAccess,
+      ensureGooglePhotosAccess,
       resetPassword,
       updateEmail,
     }),
@@ -433,6 +460,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signOut,
       signInWithGoogle,
       ensureGoogleCalendarAccess,
+      ensureGooglePhotosAccess,
       resetPassword,
       updateEmail,
     ],

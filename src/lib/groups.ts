@@ -23,15 +23,50 @@ function missingSchema(message: string) {
   );
 }
 
+function textOf(e: unknown): string {
+  if (typeof e === 'string') return e;
+  if (!e || typeof e !== 'object') return '';
+  const record = e as Record<string, unknown>;
+  for (const key of ['message', 'details', 'hint']) {
+    const value = record[key];
+    if (typeof value === 'string' && value.trim() && value.trim() !== '[object Object]') {
+      return value;
+    }
+  }
+  try {
+    const encoded = JSON.stringify(e);
+    if (!encoded || encoded === '{}' || encoded === 'null') return '';
+    const parsed = JSON.parse(encoded) as Record<string, unknown>;
+    for (const key of ['message', 'details', 'hint']) {
+      const value = parsed[key];
+      if (typeof value === 'string' && value.trim() && value.trim() !== '[object Object]') {
+        return value;
+      }
+    }
+  } catch {
+    // o objeto não é serializável
+  }
+  return '';
+}
+
 export function friendlyGroupError(e: unknown): string {
-  const message = e instanceof Error ? e.message : String(e);
+  const message = textOf(e).replace(/^.*error:\s*/i, '').trim();
+  if (!message) {
+    return 'Não foi possível concluir esta ação no grupo.';
+  }
   if (missingSchema(message)) {
     return 'Rode supabase/migrations/010_chat_groups.sql e 011_group_members_leave.sql no SQL Editor do Supabase para criar grupos.';
   }
   if (/contato/i.test(message)) {
     return 'Só é possível adicionar pessoas da sua lista de contatos.';
   }
-  return message.replace(/^.*error:\s*/i, '');
+  if (/foreign key|chat_group_resenhas/i.test(message)) {
+    return 'O grupo ainda está vinculado a uma resenha e o banco impediu a saída. Rode supabase/migrations/016_keep_origin_resenhas.sql no SQL Editor.';
+  }
+  if (/não participa deste grupo/i.test(message)) {
+    return 'Você já não participa deste grupo.';
+  }
+  return message;
 }
 
 export async function persistGroupLocally(group: ChatGroup, updatedAt?: string): Promise<void> {
